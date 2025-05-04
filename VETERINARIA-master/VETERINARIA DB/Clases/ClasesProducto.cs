@@ -54,19 +54,56 @@ namespace VETERINARIA_DB.Clases
 
         public string DeleteProducto(int id)
         {
+            using var transaction = _context.Database.BeginTransaction();
             try
             {
                 var producto = _context.Productos.Find(id);
                 if (producto == null)
                     return "El producto no existe";
 
+                // Eliminar todas las ventas asociadas al producto
+                var ventas = _context.Ventas.Where(v => v.ProductoId == id).ToList();
+                if (ventas.Any())
+                {
+                    // Primero eliminar los pagos asociados a cada venta
+                    foreach (var venta in ventas)
+                    {
+                        var pagos = _context.Pagos.Where(p => p.VentaId == venta.VentaId).ToList();
+                        if (pagos.Any())
+                        {
+                            _context.Pagos.RemoveRange(pagos);
+                            _context.SaveChanges();
+                        }
+                    }
+                    
+                    // Ahora sí eliminar las ventas
+                    _context.Ventas.RemoveRange(ventas);
+                    _context.SaveChanges();
+                }
+
+                // Desvincular el producto de su proveedor
+                producto.Proveedor = null;
+                producto.ProveedorId = null;
+                _context.SaveChanges();
+
                 _context.Productos.Remove(producto);
                 _context.SaveChanges();
+                transaction.Commit();
                 return "Producto eliminado exitosamente";
             }
             catch (Exception ex)
             {
-                return $"Error al eliminar producto: {ex.Message}";
+                transaction.Rollback();
+                var errorMessage = $"Error al eliminar producto: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $"\nInner Exception: {ex.InnerException.Message}";
+                    if (ex.InnerException.InnerException != null)
+                    {
+                        errorMessage += $"\nInner Inner Exception: {ex.InnerException.InnerException.Message}";
+                    }
+                }
+                return errorMessage;
             }
         }
 

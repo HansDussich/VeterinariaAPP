@@ -42,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const data = await response.json();
         const user = data.user;
-        
+      
         const formattedUser: User = {
           id: user.id.toString(),
           name: user.name,

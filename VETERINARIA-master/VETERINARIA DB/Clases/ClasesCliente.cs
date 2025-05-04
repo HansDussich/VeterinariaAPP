@@ -9,32 +9,32 @@ namespace VETERINARIA_DB.Clases
 {
     public class ClasesCliente
     {
-        private readonly VeterinariaDbContext _context;
+            private readonly VeterinariaDbContext _context;
 
-        public ClasesCliente(VeterinariaDbContext context)
-        {
-            _context = context;
-        }
-
-        public string Guardar(Cliente dato)
-        {
-            try
+            public ClasesCliente(VeterinariaDbContext context)
             {
-                _context.Clientes.Add(dato);
-                _context.SaveChanges();
-                return "ok";
+                _context = context;
             }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
-        }
 
-        public string EliminarCliente(int id)
-        {
+            public string Guardar(Cliente dato)
+            {
+                try
+                {
+                    _context.Clientes.Add(dato);
+                    _context.SaveChanges();
+                    return "ok";
+                }
+                catch (Exception ex)
+                {
+                    return $"Error: {ex.Message}";
+                }
+            }
+
+            public string EliminarCliente(int id)
+            {
             using var transaction = _context.Database.BeginTransaction();
-            try
-            {
+                try
+                {
                 // Primero eliminar todas las citas del cliente
                 var citas = _context.Citas.Where(c => c.ClienteId == id).ToList();
                 if (citas.Any())
@@ -108,52 +108,52 @@ namespace VETERINARIA_DB.Clases
                 _context.Clientes.Remove(cliente);
                 _context.SaveChanges();
                 transaction.Commit();
-                return "ok";
-            }
-            catch (Exception ex)
-            {
+                    return "ok";
+                }
+                catch (Exception ex)
+                {
                 transaction.Rollback();
                 return $"Error al eliminar cliente: {ex.Message}. Inner Exception: {ex.InnerException?.Message}";
+                }
             }
-        }
 
-        public Cliente MostrarClientePorId(int id)
-        {
-            try
+            public Cliente MostrarClientePorId(int id)
             {
-                return _context.Clientes.Find(id);
+                try
+                {
+                    return _context.Clientes.Find(id);
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
             }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
 
-        public List<Cliente> MostrarClientes()
-        {
-            try
+            public List<Cliente> MostrarClientes()
             {
-                return _context.Clientes.ToList();
+                try
+                {
+                    return _context.Clientes.ToList();
+                }
+                catch (Exception)
+                {
+                    return new List<Cliente>();
+                }
             }
-            catch (Exception)
-            {
-                return new List<Cliente>();
-            }
-        }
 
-        public string ActualizarCliente(Cliente dato)
-        {
-            try
+            public string ActualizarCliente(Cliente dato)
             {
-                _context.Clientes.Update(dato);
-                _context.SaveChanges();
-                return "ok";
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
+                try
+                {
+                    _context.Clientes.Update(dato);
+                    _context.SaveChanges();
+                    return "ok";
+                }
+                catch (Exception ex)
+                {
+                    return $"Error: {ex.Message}";
+                }
             }
         }
     }
-}
 

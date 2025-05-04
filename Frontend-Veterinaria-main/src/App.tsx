@@ -10,7 +10,6 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Appointments from "./pages/Appointments";
 import Pets from "./pages/Pets";
-import MedicalRecords from "./pages/MedicalRecords";
 import Clients from "./pages/Clients";
 import Products from "./pages/Products";
 import Services from "./pages/Services";
@@ -20,6 +19,7 @@ import NotFound from "./pages/NotFound";
 import Billing from "./pages/Billing";
 import Register from '@/pages/Register';
 import Veterinarians from "./pages/Veterinarians";
+import MedicalHistory from "./pages/MedicalHistory";
 
 // Components
 import { ProtectedLayout } from "./components/Layout";
@@ -52,12 +52,20 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/pets" element={<Pets />} />
+              <Route path="/clients" element={<Clients />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/services" element={<Services />} />
+              <Route path="/staff" element={<Staff />} />
               <Route path="/veterinarians" element={<Veterinarians />} />
+              <Route path="/billing" element={<Billing />} />
+              <Route path="/settings" element={<Settings />} />
+              {/* Redirect staff dashboard */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Route>
             
             {/* Routes for admin and veterinarians */}
             <Route element={<ProtectedLayout allowedRoles={['Admin', 'Veterinario']} />}>
-              <Route path="/records" element={<MedicalRecords />} />
+              <Route path="/records" element={<MedicalHistory />} />
             </Route>
             
             {/* Routes for admin and receptionists */}

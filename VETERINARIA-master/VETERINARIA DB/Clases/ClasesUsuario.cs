@@ -153,7 +153,7 @@ namespace VETERINARIA_DB.Clases
             {
                 Console.WriteLine($"Login error: {ex.Message}");
                 return false;
-            }
+            } 
         }
 
         public string CambiarContraseña(int id, string nuevaContraseña)
