@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -7,9 +7,23 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useTheme } from '@/hooks/use-theme';
 
 const Settings = () => {
   const isMobile = useIsMobile();
+  const { theme, setTheme } = useTheme();
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Initialize dark mode state based on current theme
+  useEffect(() => {
+    setIsDarkMode(theme === 'dark');
+  }, [theme]);
+
+  // Handle dark mode toggle
+  const handleDarkModeToggle = (checked: boolean) => {
+    setIsDarkMode(checked);
+    setTheme(checked ? 'dark' : 'light');
+  };
 
   return (
     <div>
@@ -77,7 +91,11 @@ const Settings = () => {
                       Cambiar entre tema claro y oscuro
                     </p>
                   </div>
-                  <Switch id="theme-toggle" />
+                  <Switch 
+                    id="theme-toggle" 
+                    checked={isDarkMode}
+                    onCheckedChange={handleDarkModeToggle}
+                  />
                 </div>
                 
                 <div className="flex items-center justify-between">

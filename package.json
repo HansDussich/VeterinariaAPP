@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.13",
+    "bcrypt": "^6.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.3"
+  }
+}

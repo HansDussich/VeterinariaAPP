@@ -6,12 +6,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Activity } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from '@/components/ui/use-toast';
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
+  
+  // Password recovery states
+  const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
+  const [recoveryUsername, setRecoveryUsername] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryStep, setRecoveryStep] = useState(1);
+  const [isRecoveryLoading, setIsRecoveryLoading] = useState(false);
+  const [userId, setUserId] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,6 +31,94 @@ const Login = () => {
     if (success) {
       navigate('/');
     }
+  };
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (recoveryStep === 1) {
+      // Step 1: Verify user exists
+      setIsRecoveryLoading(true);
+      try {
+        const response = await fetch(`http://localhost:5000/api/usuarios`);
+        const users = await response.json();
+        
+        const user = users.find((u: any) => 
+          u.nombreUsuario === recoveryUsername && u.email === recoveryEmail
+        );
+        
+        if (user) {
+          setUserId(user.usuarioId);
+          setRecoveryStep(2);
+        } else {
+          toast({
+            title: "Error",
+            description: "Usuario o email no encontrado",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Error al verificar usuario",
+          variant: "destructive"
+        });
+      } finally {
+        setIsRecoveryLoading(false);
+      }
+    } else if (recoveryStep === 2) {
+      // Step 2: Change password
+      if (newPassword !== confirmPassword) {
+        toast({
+          title: "Error",
+          description: "Las contraseñas no coinciden",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setIsRecoveryLoading(true);
+      try {
+        const response = await fetch(`http://localhost:5000/api/usuarios/${userId}/cambiar-contraseña/${newPassword}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          toast({
+            title: "Éxito",
+            description: "Contraseña actualizada correctamente",
+          });
+          resetRecoveryForm();
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo actualizar la contraseña",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Error al cambiar la contraseña",
+          variant: "destructive"
+        });
+      } finally {
+        setIsRecoveryLoading(false);
+      }
+    }
+  };
+
+  const resetRecoveryForm = () => {
+    setIsRecoveryOpen(false);
+    setRecoveryUsername('');
+    setRecoveryEmail('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRecoveryStep(1);
+    setUserId(null);
   };
 
   return (
@@ -59,7 +159,7 @@ const Login = () => {
                     className="text-sm text-primary hover:underline"
                     onClick={(e) => {
                       e.preventDefault();
-                      alert('Por favor contacta al administrador si olvidaste tu contraseña');
+                      setIsRecoveryOpen(true);
                     }}
                   >
                     ¿Olvidaste tu contraseña?
@@ -68,6 +168,7 @@ const Login = () => {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -104,6 +205,100 @@ const Login = () => {
           Sistema de Gestión Veterinaria
         </p>
       </div>
+
+      {/* Password Recovery Dialog */}
+      <Dialog open={isRecoveryOpen} onOpenChange={setIsRecoveryOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Recuperar Contraseña</DialogTitle>
+            <DialogDescription>
+              {recoveryStep === 1 
+                ? "Ingresa tu nombre de usuario y correo electrónico para verificar tu identidad."
+                : "Ingresa tu nueva contraseña."}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRecoverySubmit}>
+            {recoveryStep === 1 ? (
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="recovery-username" className="col-span-4">
+                    Nombre de Usuario
+                  </Label>
+                  <Input
+                    id="recovery-username"
+                    className="col-span-4"
+                    value={recoveryUsername}
+                    onChange={(e) => setRecoveryUsername(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="recovery-email" className="col-span-4">
+                    Correo Electrónico
+                  </Label>
+                  <Input
+                    id="recovery-email"
+                    type="email"
+                    className="col-span-4"
+                    value={recoveryEmail}
+                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="new-password" className="col-span-4">
+                    Nueva Contraseña
+                  </Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    className="col-span-4"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="confirm-password" className="col-span-4">
+                    Confirmar Contraseña
+                  </Label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    className="col-span-4"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={resetRecoveryForm}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isRecoveryLoading}
+              >
+                {isRecoveryLoading ? (
+                  <>
+                    <span className="animate-spin mr-2">&#10227;</span>
+                    Procesando...
+                  </>
+                ) : recoveryStep === 1 ? 'Verificar' : 'Cambiar Contraseña'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
