@@ -7,6 +7,7 @@ import { UserRole } from '@/types';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileNavBar } from '@/components/MobileNavBar';
 import { Calendar, PawPrint, Settings } from 'lucide-react';
+import { ChatBot } from '@/components/chat/ChatBot';
 
 interface ProtectedLayoutProps {
   allowedRoles: UserRole[];
@@ -65,6 +66,7 @@ export const Layout: React.FC = () => {
           <Outlet />
         </main>
         <MobileNavBar />
+        <ChatBot />
       </div>
     </SidebarProvider>
   );
@@ -117,6 +119,7 @@ export const ProtectedLayout: React.FC<ProtectedLayoutProps> = ({ allowedRoles, 
           <Outlet />
         </main>
         <MobileNavBar />
+        <ChatBot />
       </div>
     </SidebarProvider>
   );

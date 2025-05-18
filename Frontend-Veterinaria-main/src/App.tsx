@@ -13,7 +13,7 @@ import Appointments from "./pages/Appointments";
 import Pets from "./pages/Pets";
 import Clients from "./pages/Clients";
 import Products from "./pages/Products";
-import Services from "./pages/Services";
+import Suppliers from "./pages/Providers";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -57,7 +57,7 @@ const App = () => (
                 <Route path="/pets" element={<Pets />} />
                 <Route path="/clients" element={<Clients />} />
                 <Route path="/products" element={<Products />} />
-                <Route path="/services" element={<Services />} />
+                <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/veterinarians" element={<Veterinarians />} />
                 <Route path="/billing" element={<Billing />} />
@@ -75,7 +75,7 @@ const App = () => (
               <Route element={<ProtectedLayout allowedRoles={['Admin', 'Recepcionista']} />}>
                 <Route path="/clients" element={<Clients />} />
                 <Route path="/products" element={<Products />} />
-                <Route path="/services" element={<Services />} />
+                <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/billing" element={<Billing />} />
               </Route>
               

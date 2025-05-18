@@ -32,6 +32,7 @@ const Appointments = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
   const [veterinarians, setVeterinarians] = useState<User[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConsultationDialogOpen, setIsConsultationDialogOpen] = useState(false);
@@ -121,7 +122,8 @@ const Appointments = () => {
           id: vet.empleadoId.toString(),
           name: vet.nombre,
           email: vet.correo,
-          role: 'Veterinario'
+          role: 'Veterinario',
+          status: vet.estado || 'Activo'
         })));
       } catch (error) {
         console.error('Error fetching veterinarians:', error);
@@ -137,14 +139,15 @@ const Appointments = () => {
   }, []);
 
   const availablePets = currentUser?.role === 'Cliente' 
-    ? pets.filter(pet => pet.ownerId === currentUser.id)
-    : pets;
+    ? pets.filter(pet => pet.ownerId === currentUser.id && pet.status === 'Activo')
+    : pets.filter(pet => pet.status === 'Activo');
 
   const filteredAppointments = appointments.filter(appointment => {
     let roleFilter = true;
     
     if (currentUser?.role === 'Veterinario') {
       roleFilter = appointment.veterinarianId === currentUser.id;
+      return roleFilter; // Solo aplicamos el filtro por veterinario
     } else if (currentUser?.role === 'Cliente') {
       const userPets = availablePets.map(pet => pet.id);
       roleFilter = userPets.includes(appointment.petId);
@@ -160,6 +163,28 @@ const Appointments = () => {
     return pet ? pet.name : 'Mascota no encontrada';
   };
 
+  // Fetch clients
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/MostrarClientes`);
+        setClients(response.data.map((client: any) => ({
+          id: client.clienteId.toString(),
+          name: `${client.nombre} ${client.apellido}`
+        })));
+      } catch (error) {
+        console.error('Error fetching clients:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudieron cargar los clientes',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    fetchClients();
+  }, []);
+
   const getPetOwnerName = (petId: string): string => {
     const pet = pets.find(pet => pet.id === petId);
     if (!pet) return 'Propietario no encontrado';
@@ -168,8 +193,8 @@ const Appointments = () => {
       return currentUser.name;
     }
     
-    // For admin and receptionist, show the owner ID until we have the owner's name
-    return `Cliente #${pet.ownerId}`;
+    const client = clients.find(client => client.id === pet.ownerId);
+    return client ? client.name : `Cliente #${pet.ownerId}`;
   };
 
   const getVeterinarianName = (vetId: string): string => {
@@ -186,19 +211,37 @@ const Appointments = () => {
         'cancelled': 'CANCELADA'
       }[newStatus];
 
+      // Obtener la cita actual antes de actualizarla
+      const currentAppointment = appointments.find(app => app.id === appointmentId);
+      if (!currentAppointment) {
+        throw new Error('No se encontró la cita');
+      }
+
       const response = await axios.put(`${API_BASE_URL}/ActualizarCita`, {
         citaId: parseInt(appointmentId),
+        mascotaId: parseInt(currentAppointment.petId),
+        veterinarioId: parseInt(currentAppointment.veterinarianId),
+        fechaCita: new Date(currentAppointment.date + 'T' + currentAppointment.time).toISOString(),
+        motivo: currentAppointment.reason,
         estado: backendStatus
       });
 
       console.log('Response from backend:', response.data); // Debug log
 
       if (response.data && (typeof response.data === 'string' ? response.data.includes('exitosamente') : true)) {
-        // Actualizar inmediatamente el estado en el frontend
+        // Mantener todos los datos de la cita y solo actualizar el estado
         setAppointments(prevAppointments => 
           prevAppointments.map(appointment => 
             appointment.id === appointmentId 
-              ? { ...appointment, status: newStatus } 
+              ? { 
+                  ...appointment,
+                  status: newStatus,
+                  date: appointment.date,
+                  time: appointment.time,
+                  petId: appointment.petId,
+                  veterinarianId: appointment.veterinarianId,
+                  reason: appointment.reason
+                } 
               : appointment
           )
         );
@@ -467,7 +510,7 @@ const Appointments = () => {
                         <SelectValue placeholder="Seleccione la mascota" />
                       </SelectTrigger>
                       <SelectContent>
-                        {pets.map((pet) => (
+                        {availablePets.map((pet) => (
                           <SelectItem key={pet.id} value={pet.id}>
                             <div className="flex items-center gap-2">
                               <PawIcon className="h-4 w-4" />
@@ -490,14 +533,16 @@ const Appointments = () => {
                           <SelectValue placeholder="Seleccione el veterinario" />
                         </SelectTrigger>
                         <SelectContent>
-                          {veterinarians.map((vet) => (
-                            <SelectItem key={vet.id} value={vet.id}>
-                              <div className="flex items-center gap-2">
-                                <UserIcon className="h-4 w-4" />
-                                <span>Dr. {vet.name}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
+                          {veterinarians
+                            .filter(vet => vet.status === 'Activo')
+                            .map((vet) => (
+                              <SelectItem key={vet.id} value={vet.id}>
+                                <div className="flex items-center gap-2">
+                                  <UserIcon className="h-4 w-4" />
+                                  <span>Dr. {vet.name}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>

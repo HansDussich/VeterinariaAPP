@@ -251,7 +251,7 @@ const MedicalHistory: React.FC = () => {
       const response = await axios.get(`${API_BASE_URL}/ListarEmpleados`);
       if (response.status === 200) {
         const vets = response.data.filter((emp: Veterinarian) => 
-          emp.cargo.toLowerCase().includes('veterinario')
+          emp.cargo && emp.cargo.toLowerCase().includes('veterinario')
         );
         setVeterinarians(vets);
       }
@@ -752,4 +752,4 @@ const MedicalHistory: React.FC = () => {
   );
 };
 
-export default MedicalHistory; 
+export default MedicalHistory;

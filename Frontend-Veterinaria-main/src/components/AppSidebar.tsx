@@ -21,7 +21,8 @@ import {
   Stethoscope, 
   Users,
   Activity,
-  FileText
+  FileText,
+  Truck
 } from 'lucide-react';
 import { PawIcon } from '@/components/icons/PawIcon';
 import { useAuth } from '@/contexts/AuthContext';
@@ -85,9 +86,9 @@ export function AppSidebar() {
         roles: ['Admin', 'Recepcionista'],
       },
       {
-        title: 'Servicios',
-        path: '/services',
-        icon: Stethoscope,
+        title: 'Proveedores',
+        path: '/suppliers',
+        icon: Truck,
         roles: ['Admin', 'Recepcionista'],
       },
       {

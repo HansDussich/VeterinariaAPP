@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Plus, User, Mail, Phone, Calendar } from 'lucide-react';
+import { Search, Plus, User, Mail, Phone, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ExtendedBadge } from '@/components/ui/extended-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,601 +20,386 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import axios from 'axios'; // Added axios
+
+const API_BASE_URL = 'https://localhost:7290'; // Added API_BASE_URL
+
+// Define la interfaz para un miembro del personal
+interface StaffMember {
+  empleadoId: number;
+  nombre: string;
+  cargo: string;
+  correo: string;
+  telefono: string;
+  especialidad?: string;
+  estado: 'activo' | 'inactivo';
+}
+
+// Define la interfaz para el horario
+interface Schedule {
+  [key: string]: { active: boolean; start: string; end: string };
+}
+
+const getRoleName = (role: string) => {
+  switch (role) {
+    
+    case 'recepcionista': return 'Recepcionista';
+    case 'admin': return 'Administrador';
+    default: return role.charAt(0).toUpperCase() + role.slice(1);
+  }
+};
 
 const Staff = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Estados para diálogos
   const [isNewStaffDialogOpen, setIsNewStaffDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
 
-  // Estado para el formulario
   const [staffForm, setStaffForm] = useState({
     name: '',
-    role: '',
+    apellido: '',
+    cargo: '',
     email: '',
     phone: '',
-    specialty: '',
-    status: 'active'
+      contraseña: '',
+    status: 'activo'
   });
 
-  // Días de la semana para el horario
   const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-  
-  // Estado inicial para el horario
+
   const initialSchedule = weekdays.reduce((acc, day) => {
     acc[day.toLowerCase()] = { active: false, start: '08:00', end: '18:00' };
     return acc;
   }, {});
-  
-  // Estado para el horario
-  const [scheduleForm, setScheduleForm] = useState(initialSchedule);
 
-  // Datos de prueba para personal
-  const [staffMembers, setStaffMembers] = useState([
-    { id: 1, name: 'Dr. Roberto Méndez', role: 'veterinarian', email: 'roberto@vetcare.com', phone: '555-1234', specialty: 'Medicina general', status: 'active' },
-    { id: 2, name: 'Dra. Laura Fernández', role: 'veterinarian', email: 'laura@vetcare.com', phone: '555-5678', specialty: 'Cirugía', status: 'active' },
-    { id: 3, name: 'Ana Martínez', role: 'receptionist', email: 'ana@vetcare.com', phone: '555-9012', specialty: 'N/A', status: 'active' },
-    { id: 4, name: 'Carlos Jiménez', role: 'receptionist', email: 'carlos@vetcare.com', phone: '555-3456', specialty: 'N/A', status: 'inactive' },
-    { id: 5, name: 'Dra. Sofía Ruiz', role: 'veterinarian', email: 'sofia@vetcare.com', phone: '555-7890', specialty: 'Dermatología', status: 'active' },
-  ]);
+  const [scheduleForm, setScheduleForm] = useState<Schedule>(initialSchedule);
 
-  // Filtrar personal por término de búsqueda
-  const filteredStaff = staffMembers.filter(staff => 
-    staff.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    staff.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    staff.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    staff.role.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
 
-  // Función para obtener el nombre del rol en español
-  const getRoleName = (role) => {
-    switch (role) {
-      case 'veterinarian': return 'Veterinario';
-      case 'receptionist': return 'Recepcionista';
-      case 'admin': return 'Administrador';
-      default: return role;
-    }
-  };
-
-  // Manejar creación de nuevo miembro del personal
-  const handleSaveNewStaff = () => {
-    // Validar campos obligatorios
-    if (!staffForm.name || !staffForm.role || !staffForm.email || !staffForm.phone) {
-      toast({
-        title: "Error",
-        description: "Nombre, rol, email y teléfono son obligatorios",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validar email básico
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(staffForm.email)) {
-      toast({
-        title: "Error",
-        description: "El formato del email no es válido",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Configurar especialidad basada en el rol
-    const specialty = staffForm.role === 'veterinarian' ? staffForm.specialty : 'N/A';
-
-    // Crear nuevo miembro
-    const newStaff = {
-      id: staffMembers.length + 1,
-      name: staffForm.name,
-      role: staffForm.role,
-      email: staffForm.email,
-      phone: staffForm.phone,
-      specialty: specialty,
-      status: staffForm.status
+  useEffect(() => {
+    const fetchStaffMembers = async () => {
+      setIsLoading(true);
+      try {
+        const response = await axios.get(`${API_BASE_URL}/ListarEmpleados`);
+        const mappedData = response.data.map((emp: any) => ({
+          empleadoId: emp.empleadoId,
+          nombre: emp.nombre || '',
+  cargo: emp.cargo?.toLowerCase() || 'desconocido',
+  correo: emp.correo || '',
+          telefono: emp.telefono || '',
+          
+          estado: emp.estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo',
+        }));
+        setStaffMembers(mappedData);
+      } catch (error) {
+        console.error("Error fetching staff members:", error);
+        toast({
+          title: 'Error',
+          description: 'No se pudieron cargar los empleados. Verifica la consola para más detalles.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    // Actualizar lista de personal
-    setStaffMembers([...staffMembers, newStaff]);
-    setIsNewStaffDialogOpen(false);
-    
-    // Resetear formulario
-    setStaffForm({
-      name: '',
-      role: '',
-      email: '',
-      phone: '',
-      specialty: '',
-      status: 'active'
-    });
-    
-    toast({
-      title: "Empleado agregado",
-      description: `${newStaff.name} ha sido añadido al personal.`
-    });
+    fetchStaffMembers();
+  }, [toast]);
+
+  const filteredStaff = staffMembers.filter(staff => {
+  const nombre = String(staff.nombre || '');
+  const correo = String(staff.correo || '');
+  const cargo = String(staff.cargo || '');
+  return (
+    (nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (correo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (cargo || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+});
+
+  const getRoleName = (role: string) => {
+    switch (role) {
+      
+      case 'recepcionista': return 'Recepcionista';
+      case 'admin': return 'Administrador';
+      default: return role.charAt(0).toUpperCase() + role.slice(1);
+    }
   };
 
-  // Manejar edición de miembro del personal
-  const handleEditClick = (staff) => {
+  const handleEdit = (staff: StaffMember) => {
+    setStaffForm({
+      name: staff.nombre.split(' ')[0] || '',
+      apellido: staff.nombre.split(' ')[1] || '',
+      cargo: staff.cargo,
+      email: staff.correo,
+      phone: staff.telefono,
+      contraseña: '',
+      status: staff.estado
+    });
     setSelectedStaff(staff);
-    setStaffForm({
-      name: staff.name,
-      role: staff.role,
-      email: staff.email,
-      phone: staff.phone,
-      specialty: staff.specialty !== 'N/A' ? staff.specialty : '',
-      status: staff.status
-    });
-    setIsEditDialogOpen(true);
+    setIsNewStaffDialogOpen(true);
   };
 
-  // Guardar cambios de miembro editado
-  const handleSaveEditedStaff = () => {
-    // Validar campos obligatorios
-    if (!staffForm.name || !staffForm.role || !staffForm.email || !staffForm.phone) {
+  const handleDelete = async (empleadoId: number) => {
+    if (!confirm('¿Está seguro de eliminar este empleado?')) return;
+
+    try {
+      await axios.delete(`${API_BASE_URL}/EliminarEmpleado/${empleadoId}`);
+      setStaffMembers(staffMembers.filter(staff => staff.empleadoId !== empleadoId));
       toast({
-        title: "Error",
-        description: "Nombre, rol, email y teléfono son obligatorios",
-        variant: "destructive"
+        title: 'Éxito',
+        description: 'Empleado eliminado correctamente'
       });
-      return;
-    }
-
-    // Validar email básico
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(staffForm.email)) {
+    } catch (error) {
+      console.error('Error deleting staff member:', error);
       toast({
-        title: "Error",
-        description: "El formato del email no es válido",
-        variant: "destructive"
+        title: 'Error',
+        description: 'No se pudo eliminar el empleado',
+        variant: 'destructive'
       });
-      return;
     }
+  };
 
-    // Configurar especialidad basada en el rol
-    const specialty = staffForm.role === 'veterinarian' ? staffForm.specialty : 'N/A';
+  const handleSaveNewStaff = async () => {
+    const phonePattern = /^[0-9]{7,10}$/;
+    const staffPayload = {
+      nombre: staffForm.name,
+      apellido: staffForm.apellido,
+      cargo: staffForm.cargo,
+      correo: staffForm.email,
+      telefono: staffForm.phone,
+      contraseña: staffForm.contraseña,
+      estado: staffForm.status
+    };
 
-    // Actualizar miembro del personal
-    const updatedStaffMembers = staffMembers.map(s => {
-      if (s.id === selectedStaff.id) {
-        return {
-          ...s,
-          name: staffForm.name,
-          role: staffForm.role,
-          email: staffForm.email,
-          phone: staffForm.phone,
-          specialty: specialty,
-          status: staffForm.status
+    try {
+      let response;
+      if (selectedStaff) {
+        // Actualizar empleado existente
+        response = await axios.put(`${API_BASE_URL}/ActualizarEmpleado`, {
+          ...staffPayload,
+          empleadoId: selectedStaff.empleadoId
+        });
+        
+        // Actualizar la lista de empleados
+        setStaffMembers(staffMembers.map(staff => 
+          staff.empleadoId === selectedStaff.empleadoId
+            ? {
+                empleadoId: selectedStaff.empleadoId,
+                nombre: `${staffForm.name} ${staffForm.apellido}`,
+                cargo: staffForm.cargo.toLowerCase(),
+                correo: staffForm.email,
+                telefono: staffForm.phone,
+                estado: staffForm.status
+              }
+            : staff
+        ));
+
+        toast({
+          title: "Empleado actualizado",
+          description: `Los datos del empleado han sido actualizados correctamente.`
+        });
+      } else {
+        // Crear nuevo empleado
+        response = await axios.post(`${API_BASE_URL}/GuardarEmpleado`, staffPayload);
+        const newStaff = {
+          empleadoId: response.data.empleadoId,
+          nombre: `${staffForm.name} ${staffForm.apellido}`,
+          cargo: staffForm.cargo.toLowerCase(),
+          correo: staffForm.email,
+          telefono: staffForm.phone,
+          estado: 'activo'
         };
+        setStaffMembers([...staffMembers, newStaff]);
+
+        toast({
+          title: "Empleado agregado",
+          description: `${response.data.nombre} ha sido añadido al personal.`
+        });
       }
-      return s;
-    });
 
-    setStaffMembers(updatedStaffMembers);
-    setIsEditDialogOpen(false);
-    setSelectedStaff(null);
-    
-    toast({
-      title: "Empleado actualizado",
-      description: `${staffForm.name} ha sido actualizado correctamente.`
-    });
-  };
+      setIsNewStaffDialogOpen(false);
+      setSelectedStaff(null);
+      setStaffForm({
+        name: '',
+        apellido: '',
+        cargo: '',
+        email: '',
+        phone: '',
+        contraseña: '',
+        status: 'activo'
+      });
 
-  // Manejar ver horario
-  const handleViewSchedule = (staff) => {
-    setSelectedStaff(staff);
-    
-    // Inicializar horario predeterminado para esta demostración
-    const defaultSchedule = weekdays.reduce((acc, day, index) => {
-      // Para esta demo, asumimos que todos trabajan de lunes a viernes
-      const isActive = index < 5; // Activo de lunes a viernes
-      acc[day.toLowerCase()] = { 
-        active: isActive, 
-        start: '08:00', 
-        end: '18:00' 
-      };
-      return acc;
-    }, {});
-    
-    setScheduleForm(defaultSchedule);
-    setIsScheduleDialogOpen(true);
-  };
-
-  // Manejar cambios en el horario
-  const handleScheduleChange = (day, field, value) => {
-    setScheduleForm(prev => ({
-      ...prev,
-      [day]: {
-        ...prev[day],
-        [field]: value
-      }
-    }));
-  };
-
-  // Guardar horario
-  const handleSaveSchedule = () => {
-    setIsScheduleDialogOpen(false);
-    
-    toast({
-      title: "Horario actualizado",
-      description: `El horario de ${selectedStaff.name} ha sido actualizado correctamente.`
-    });
+    } catch (error) {
+      console.error("Error al procesar empleado:", error);
+      const errorMessage = error.response?.data?.message || 
+        `No se pudo ${selectedStaff ? 'actualizar' : 'agregar'} el empleado. Verifique los datos e intente de nuevo.`;
+      toast({
+        title: `Error al ${selectedStaff ? 'actualizar' : 'crear'} empleado`,
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Personal</h1>
-        <Button className="flex items-center gap-2" onClick={() => setIsNewStaffDialogOpen(true)}>
-          <Plus className="h-4 w-4" /> Nuevo Empleado
-        </Button>
-      </div>
-      
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            placeholder="Buscar por nombre, rol o especialidad..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
-      
-      {isMobile ? (
-        <div className="space-y-4">
-          {filteredStaff.map(staff => (
-            <Card key={staff.id}>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback>{staff.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <CardTitle className="text-lg">{staff.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{getRoleName(staff.role)}</p>
-                    </div>
-                  </div>
-                  <ExtendedBadge variant={staff.status === 'active' ? 'success' : 'outline'}>
-                    {staff.status === 'active' ? 'Activo' : 'Inactivo'}
-                  </ExtendedBadge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span>{staff.email}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{staff.phone}</span>
-                  </div>
-                  {staff.specialty !== 'N/A' && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Especialidad:</span>
-                      <span>{staff.specialty}</span>
-                    </div>
-                  )}
-                  <div className="flex gap-2 mt-2">
-                    <Button 
-                      variant="outline" 
-                      className="flex-1"
-                      onClick={() => handleEditClick(staff)}
-                    >
-                      Editar
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="flex-1"
-                      onClick={() => handleViewSchedule(staff)}
-                    >
-                      Ver horario
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Teléfono</TableHead>
-                  <TableHead>Especialidad</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStaff.map(staff => (
-                  <TableRow key={staff.id}>
-                    <TableCell>{staff.id}</TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>{staff.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        {staff.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getRoleName(staff.role)}</TableCell>
-                    <TableCell>{staff.email}</TableCell>
-                    <TableCell>{staff.phone}</TableCell>
-                    <TableCell>{staff.specialty}</TableCell>
-                    <TableCell>
-                      <ExtendedBadge variant={staff.status === 'active' ? 'success' : 'outline'}>
-                        {staff.status === 'active' ? 'Activo' : 'Inactivo'}
-                      </ExtendedBadge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleEditClick(staff)}
-                        >
-                          Editar
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleViewSchedule(staff)}
-                        >
-                          Ver horario
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Dialog para nuevo empleado */}
       <Dialog open={isNewStaffDialogOpen} onOpenChange={setIsNewStaffDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
-            <DialogTitle>Nuevo Empleado</DialogTitle>
+            <DialogTitle>{selectedStaff ? 'Editar' : 'Nuevo'} Miembro del Personal</DialogTitle>
             <DialogDescription>
-              Complete la información para agregar un nuevo miembro al personal
+              Complete todos los campos obligatorios (*) para {selectedStaff ? 'actualizar' : 'agregar'} un miembro del personal.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre completo</Label>
-              <Input
-                id="name"
-                placeholder="Nombre y apellidos"
-                value={staffForm.name}
-                onChange={(e) => setStaffForm({...staffForm, name: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Rol</Label>
-              <Select
-                onValueChange={(value) => setStaffForm({...staffForm, role: value})}
-                defaultValue={staffForm.role}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione un rol" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="veterinarian">Veterinario</SelectItem>
-                  <SelectItem value="receptionist">Recepcionista</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {staffForm.role === 'veterinarian' && (
-              <div className="space-y-2">
-                <Label htmlFor="specialty">Especialidad</Label>
-                <Input
-                  id="specialty"
-                  placeholder="Ej: Cirugía, Dermatología, etc."
-                  value={staffForm.specialty}
-                  onChange={(e) => setStaffForm({...staffForm, specialty: e.target.value})}
-                />
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="email@vetcare.com"
-                value={staffForm.email}
-                onChange={(e) => setStaffForm({...staffForm, email: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Teléfono</Label>
-              <Input
-                id="phone"
-                placeholder="555-1234"
-                value={staffForm.phone}
-                onChange={(e) => setStaffForm({...staffForm, phone: e.target.value})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="status">Estado activo</Label>
-              <Switch
-                id="status"
-                checked={staffForm.status === 'active'}
-                onCheckedChange={(checked) => 
-                  setStaffForm({...staffForm, status: checked ? 'active' : 'inactive'})
-                }
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewStaffDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveNewStaff}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog para editar empleado */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar Empleado</DialogTitle>
-            <DialogDescription>
-              Modifique la información del empleado
-            </DialogDescription>
-          </DialogHeader>
-          {selectedStaff && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Nombre completo</Label>
-                <Input
-                  id="edit-name"
-                  placeholder="Nombre y apellidos"
-                  value={staffForm.name}
-                  onChange={(e) => setStaffForm({...staffForm, name: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-role">Rol</Label>
-                <Select
-                  onValueChange={(value) => setStaffForm({...staffForm, role: value})}
-                  defaultValue={staffForm.role}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un rol" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="veterinarian">Veterinario</SelectItem>
-                    <SelectItem value="receptionist">Recepcionista</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {staffForm.role === 'veterinarian' && (
+          
+          <div className="grid grid-cols-4 gap-4 py-4">
+            {/* Sección Información Personal */}
+            <div className="col-span-4 space-y-4 border-b pb-4">
+              <h3 className="text-sm font-medium">Información Personal</h3>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-specialty">Especialidad</Label>
+                  <Label htmlFor="name">Nombre *</Label>
+                  <Input id="name" value={staffForm.name} onChange={(e) => setStaffForm({...staffForm, name: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="apellido">Apellido *</Label>
+                  <Input id="apellido" value={staffForm.apellido} onChange={(e) => setStaffForm({...staffForm, apellido: e.target.value})} />
+                </div>
+              </div>
+            </div>
+          
+            {/* Sección Datos Laborales */}
+            <div className="col-span-4 space-y-4 border-b pb-4">
+              <h3 className="text-sm font-medium">Datos Laborales</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cargo">Cargo *</Label>
+                  <Select 
+                    value={staffForm.cargo}
+                    onValueChange={(value) => setStaffForm({...staffForm, cargo: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione un cargo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recepcionista">Recepcionista</SelectItem>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="turno">Turno <span className="text-red-500">*</span></Label>
+                  <Select value={staffForm.turno} onValueChange={(value) => setStaffForm({...staffForm, turno: value})}>
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Seleccionar turno" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mañana">Mañana</SelectItem>
+                      <SelectItem value="Tarde">Tarde</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fechaNacimiento">Fecha de Nacimiento <span className="text-red-500">*</span></Label>
                   <Input
-                    id="edit-specialty"
-                    placeholder="Ej: Cirugía, Dermatología, etc."
-                    value={staffForm.specialty}
-                    onChange={(e) => setStaffForm({...staffForm, specialty: e.target.value})}
+                    id="fechaNacimiento"
+                    type="date"
+                    value={staffForm.fechaNacimiento}
+                    onChange={(e) => setStaffForm({...staffForm, fechaNacimiento: e.target.value})}
+                    className="h-8"
                   />
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  placeholder="email@vetcare.com"
-                  value={staffForm.email}
-                  onChange={(e) => setStaffForm({...staffForm, email: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Teléfono</Label>
-                <Input
-                  id="edit-phone"
-                  placeholder="555-1234"
-                  value={staffForm.phone}
-                  onChange={(e) => setStaffForm({...staffForm, phone: e.target.value})}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-status">Estado activo</Label>
-                <Switch
-                  id="edit-status"
-                  checked={staffForm.status === 'active'}
-                  onCheckedChange={(checked) => 
-                    setStaffForm({...staffForm, status: checked ? 'active' : 'inactive'})
-                  }
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="fechaIngreso">Fecha de Ingreso <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="fechaIngreso"
+                    type="datetime-local"
+                    value={staffForm.fechaIngreso}
+                    onChange={(e) => setStaffForm({...staffForm, fechaIngreso: e.target.value})}
+                    className="h-8"
+                  />
+                </div>
               </div>
             </div>
-          )}
+          
+            {/* Sección Contacto */}
+            <div className="col-span-4 space-y-4 pb-4">
+              <h3 className="text-sm font-medium">Información de Contacto</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
+                  <Input id="email" type="email" value={staffForm.email} onChange={(e) => setStaffForm({...staffForm, email: e.target.value})} className="h-8" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Teléfono <span className="text-red-500">*</span></Label>
+                  <Input id="phone" value={staffForm.phone} onChange={(e) => setStaffForm({...staffForm, phone: e.target.value})} className="h-8" />
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveEditedStaff}>Guardar Cambios</Button>
+            <Button type="submit" onClick={handleSaveNewStaff}>Guardar Cambios</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para ver/editar horario */}
-      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Horario Semanal</DialogTitle>
-            <DialogDescription>
-              {selectedStaff && `Gestione el horario de trabajo para ${selectedStaff.name}`}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedStaff && (
-            <div className="space-y-4 py-2">
-              {weekdays.map(day => (
-                <div key={day} className="grid grid-cols-[auto_1fr_auto] gap-3 items-center border-b pb-3 last:border-0">
-                  <div className="flex items-center gap-2 min-w-[100px]">
-                    <Switch
-                      id={`day-${day}`}
-                      checked={scheduleForm[day.toLowerCase()].active}
-                      onCheckedChange={(checked) => 
-                        handleScheduleChange(day.toLowerCase(), 'active', checked)
-                      }
-                    />
-                    <Label htmlFor={`day-${day}`}>{day}</Label>
-                  </div>
-                  <div className={`grid grid-cols-2 gap-2 ${!scheduleForm[day.toLowerCase()].active && 'opacity-50'}`}>
-                    <div>
-                      <Label htmlFor={`start-${day}`} className="text-xs">Entrada</Label>
-                      <Input
-                        id={`start-${day}`}
-                        type="time"
-                        value={scheduleForm[day.toLowerCase()].start}
-                        onChange={(e) => 
-                          handleScheduleChange(day.toLowerCase(), 'start', e.target.value)
-                        }
-                        disabled={!scheduleForm[day.toLowerCase()].active}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`end-${day}`} className="text-xs">Salida</Label>
-                      <Input
-                        id={`end-${day}`}
-                        type="time"
-                        value={scheduleForm[day.toLowerCase()].end}
-                        onChange={(e) => 
-                          handleScheduleChange(day.toLowerCase(), 'end', e.target.value)
-                        }
-                        disabled={!scheduleForm[day.toLowerCase()].active}
-                      />
-                    </div>
-                  </div>
-                </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Personal</CardTitle>
+          <Button onClick={() => setIsNewStaffDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Agregar
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Input
+            type="text"
+            placeholder="Buscar..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Puesto</TableHead>
+                <TableHead>Correo</TableHead>
+                <TableHead>Teléfono</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredStaff.map((staff) => (
+                <TableRow key={staff.empleadoId}>
+                  <TableCell>{staff.nombre}</TableCell>
+                  <TableCell>{getRoleName(staff.cargo)}</TableCell>
+                  <TableCell>{staff.correo}</TableCell>
+                  <TableCell>{staff.telefono}</TableCell>
+                  <TableCell>{staff.estado}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(staff)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(staff.empleadoId)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveSchedule} className="gap-2">
-              <Calendar className="h-4 w-4" /> Guardar Horario
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 };

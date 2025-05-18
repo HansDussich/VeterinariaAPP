@@ -1,44 +1,146 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Clock, Users, Package, DollarSign } from 'lucide-react';
 import { PawIcon } from '@/components/icons/PawIcon';
-import { appointments, pets, products, users } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import axios from 'axios';
+
+const API_BASE_URL = 'https://localhost:7290';
 
 const Dashboard = () => {
   const { currentUser } = useAuth();
+  const { toast } = useToast();
   const today = new Date();
+  const [appointments, setAppointments] = useState([]);
+  const [pets, setPets] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Filter appointments for today
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
+        const [appointmentsRes, petsRes, productsRes, employeesRes, veterinariansRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/ListarCitas`),
+          axios.get(`${API_BASE_URL}/ListarMascotas`),
+          axios.get(`${API_BASE_URL}/ListarProductos`),
+          axios.get(`${API_BASE_URL}/ListarEmpleados`),
+          axios.get(`${API_BASE_URL}/ListarVeterinarios`)
+        ]);
+
+
+        // Procesar citas
+        const processedAppointments = appointmentsRes.data.map(cita => ({
+          id: cita.citaId?.toString(),
+          petId: cita.mascotaId?.toString(),
+          date: cita.fechaCita ? new Date(cita.fechaCita).toISOString().split('T')[0] : '',
+          status: cita.estado?.toLowerCase() === 'completada' ? 'completed' : 
+                 cita.estado?.toLowerCase() === 'cancelada' ? 'cancelled' : 'scheduled',
+          veterinarianId: cita.veterinarioId?.toString()
+        }));
+        setAppointments(processedAppointments);
+
+        // Procesar mascotas y calcular clientes únicos
+        const processedPets = petsRes.data;
+        setPets(processedPets);
+        
+        // Procesar productos y calcular stock bajo
+        const processedProducts = productsRes.data;
+        setProducts(processedProducts);
+        
+        // Procesar empleados y calcular personal activo
+        const processedEmployees = employeesRes.data;
+        setEmployees(processedEmployees);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudieron cargar los datos del dashboard',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  // Calcular citas para hoy
   const todayAppointments = appointments.filter(appointment => {
-    return appointment.date === today.toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    return appointment.date === today;
   });
 
-  // Get pending appointments for the current veterinarian
+  // Calcular citas pendientes según el rol
   const pendingAppointments = appointments.filter(appointment => {
-    if (currentUser?.role === 'veterinarian') {
+    if (currentUser?.role?.toLowerCase() === 'veterinario') {
       return appointment.veterinarianId === currentUser.id && appointment.status === 'scheduled';
     }
     return appointment.status === 'scheduled';
   });
 
-  // Count clients (users with role 'client')
-  const clientCount = users.filter(user => user.role === 'client').length;
+  // Calcular citas completadas hoy
+  const completedTodayAppointments = appointments.filter(appointment => {
+    const today = new Date().toISOString().split('T')[0];
+    return appointment.date === today && appointment.status === 'completed';
+  });
 
-  // Count products with low stock (less than 10)
-  const lowStockProducts = products.filter(product => product.stock < 10);
+  // Calcular cantidad de clientes únicos
+  const clientCount = pets.reduce((count, pet) => {
+    const clientId = pet.clienteId?.toString();
+    return clientId && !count.includes(clientId) ? [...count, clientId] : count;
+  }, [] as string[]).length;
+
+  // Calcular personal activo
+  const activeStaffCount = employees.filter(employee => 
+    employee.estado?.toLowerCase() === 'activo'
+  ).length;
+
+  // Calcular veterinarios activos
+  const activeVeterinarians = employees.filter(employee => 
+    employee.estado?.toLowerCase() === 'activo' && 
+    employee.rol?.toLowerCase() === 'veterinario'
+  ).length;
+
+  // Calcular productos con stock bajo
+  const lowStockProducts = products.filter(product => 
+    (product.stock !== undefined && product.stock < 10) || 
+    (product.cantidad !== undefined && product.cantidad < 10)
+  );
+
+  // Calcular facturas pendientes (simulado por ahora)
+  const pendingInvoices = appointments.filter(appointment =>
+    appointment.status === 'completed' && !appointment.isPaid
+  ).length;
+
+  // Calcular tasa de completado de citas del día
+  const appointmentCompletionRate = todayAppointments.length > 0 
+    ? Math.round((completedTodayAppointments.length / todayAppointments.length) * 100)
+    : 0;
 
   // Cards to display based on user role
   const getCards = () => {
     const baseCards = [
       {
-        title: 'Citas Hoy',
-        value: todayAppointments.length,
-        description: 'Citas programadas para hoy',
+        title: 'Citas Programadas',
+        value: pendingAppointments.length,
+        description: 'Total de citas programadas',
         icon: Calendar,
         color: 'text-blue-500',
         bgColor: 'bg-blue-50',
+        roles: ['admin', 'veterinarian', 'receptionist'],
+      },
+      {
+        title: 'Citas Completadas',
+        value: `${appointmentCompletionRate}%`,
+        description: 'Tasa de completado de hoy',
+        icon: Clock,
+        color: 'text-green-500',
+        bgColor: 'bg-green-50',
         roles: ['admin', 'veterinarian', 'receptionist'],
       },
       {
@@ -49,6 +151,33 @@ const Dashboard = () => {
         color: 'text-yellow-500',
         bgColor: 'bg-yellow-50',
         roles: ['admin', 'veterinarian', 'receptionist'],
+      },
+      {
+        title: 'Personal Activo',
+        value: activeStaffCount,
+        description: 'Empleados en servicio',
+        icon: Users,
+        color: 'text-indigo-500',
+        bgColor: 'bg-indigo-50',
+        roles: ['admin'],
+      },
+      {
+        title: 'Veterinarios Activos',
+        value: activeVeterinarians,
+        description: 'Veterinarios en servicio',
+        icon: Users,
+        color: 'text-purple-500',
+        bgColor: 'bg-purple-50',
+        roles: ['admin'],
+      },
+      {
+        title: 'Facturas Pendientes',
+        value: pendingInvoices,
+        description: 'Facturas por cobrar',
+        icon: DollarSign,
+        color: 'text-red-500',
+        bgColor: 'bg-red-50',
+        roles: ['admin', 'receptionist'],
       },
       {
         title: 'Mascotas Registradas',
@@ -95,9 +224,10 @@ const Dashboard = () => {
 
   // Cards for client dashboard
   const getClientCards = () => {
-    const clientPets = pets.filter(pet => currentUser && pet.ownerId === currentUser.id);
+    const clientPets = pets.filter(pet => currentUser && pet.clienteId?.toString() === currentUser.id);
     const clientAppointments = appointments.filter(appointment => {
-      return clientPets.some(pet => pet.id === appointment.petId) && appointment.status === 'scheduled';
+      return clientPets.some(pet => pet.mascotaId?.toString() === appointment.petId) && 
+             appointment.status === 'scheduled';
     });
 
     return [
@@ -122,6 +252,14 @@ const Dashboard = () => {
 
   // Get appropriate cards based on user role
   const dashboardCards = currentUser?.role === 'client' ? getClientCards() : getCards();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div>
